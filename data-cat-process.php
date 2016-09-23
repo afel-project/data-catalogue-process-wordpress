@@ -109,21 +109,21 @@ function dcp_login_and_create_dataset(){
     } else {
 	$result['error'] = "Please provide a type of dataset";
 	wp_send_json($result);
-	result;
+	return;
     }
     if (isset($_POST['description'])){
 	$description = $_POST['description'];
     } else {
 	$result['error'] = "Please provide a description for the dataset";
 	wp_send_json($result);
-	result;
+	return;
     }
     if (isset($_POST['ecapiconf'])){
 	$ecapiconf = $_POST['ecapiconf'];
     } else {
 	$result['error'] = "Please provide a configuration for the Data API.";
 	wp_send_json($result);
-	result;
+	return;
     }
 
     // check user credentials 
