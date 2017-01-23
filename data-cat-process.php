@@ -3,7 +3,7 @@
  * @package Data Cat Process
  */
 /*
-Plugin Name: Data Cat Process
+Plugin Name: Data Cataloguing Process
 Plugin URI: http://mksmart.org
 Description: Create keys for users, and create new datasets
 Version: 0.0.2 - 03-11-2014
@@ -15,6 +15,9 @@ License: -
 // for couchdb code reuse from ecapi plugin
 require_once( str_replace("/data-cat-process/", "/", plugin_dir_path( __FILE__ )) . 'ecapi/inc/ecapiconfigform/couchdb.class.php');
 
+/*
+ * This should be configurable from WordPress!
+ */
 $config = array(
    "ecapiuri" => "http://localhost:8081/jit/",
    "ecapikey" => ""
@@ -22,7 +25,7 @@ $config = array(
 
 // send message when called directly
 if ( !function_exists( 'add_action' ) ) {
-	echo 'This is a plugin... what do you want?';
+	echo "This is a plugin, there's nothing for you here";
 	exit;
 }
 
@@ -84,54 +87,35 @@ function dcp_options_validate($input) {
 
 function dcp_login_and_create_dataset(){
     // check that the query includes what we want
-    if (!endsWith($_SERVER['REQUEST_URI'], newuserdataset)){
-	return;
-    }
-    $result = array("version" => 0.1);
-
-    if (isset($_POST['username'])){
+    // Why does this even work?!?
+    if (!endsWith($_SERVER['REQUEST_URI'], newuserdataset)) return;
+    
+    $result = array( "version" => "0.1" );
+	$errstr = "";
+	if( empty($_POST['username']) ) $errstr .= " * a username";
+	if( empty($_POST['password']) ) $errstr .= " * a non-empty password";
+	if( empty($_POST['type']) ) $errstr .= " * a type of dataset";
+	if( empty($_POST['description']) ) $errstr .= " * a description for the dataset";
+	if( empty($_POST['ecapiconf']) ) $errstr .= " * a configuration for the Data API";
+	if( strlen($errstr) > 0 ) {
+		$result['error'] = "Please provide the following:" . $errstr;
+		wp_send_json( $result, 400 );
+		return;
+	}
 	$username = $_POST['username'];
-	$result->username=$username;
-    } else {
-	$result['error'] = "Please provide a username";
-	wp_send_json($result);
-	return;
-    }
-    if (isset($_POST['password'])){
+	$result->username = $username;
 	$password = $_POST['password'];
-    } else {
-	$result['error'] = "Please provide a password";
-	wp_send_json($result);
-	return;
-    }
-    if (isset($_POST['type'])){
 	$type = $_POST['type'];
-    } else {
-	$result['error'] = "Please provide a type of dataset";
-	wp_send_json($result);
-	return;
-    }
-    if (isset($_POST['description'])){
 	$description = $_POST['description'];
-    } else {
-	$result['error'] = "Please provide a description for the dataset";
-	wp_send_json($result);
-	return;
-    }
-    if (isset($_POST['ecapiconf'])){
 	$ecapiconf = $_POST['ecapiconf'];
-    } else {
-	$result['error'] = "Please provide a configuration for the Data API.";
-	wp_send_json($result);
-	return;
-    }
 
     // check user credentials 
     $user = get_user_by( 'login', $username );
-    if ( $user && wp_check_password( $password, $user->data->user_pass, $user->ID) ) {
-	$result['key']= getUserKey($username);
-	$result['dataset'] = getDatasetId($type, $username);
-	if (!createDatasetEntry($type, $username, $user->ID, $description, $result['dataset'])){
+    if( $user && wp_check_password( $password, $user->data->user_pass, $user->ID) ) {
+	$result['key'] = computeUserKey($username);
+	$result['dataset'] = computeDatasetId($type, $username);
+	
+	if( !createDatasetEntry($type, $username, $user->ID, $result['dataset'], $description) ){
 	    $result['error'] = "could not create dataset entry - maybe it already exists";
 	} else {
 	       // declare the dataset in ECAPI
@@ -205,47 +189,84 @@ function dcp_login_and_create_dataset(){
 
 add_action( 'template_redirect', 'dcp_login_and_create_dataset' );
 
-function getUserKey($username){
+function computeUserKey($username){
     $salt1 = "I don't know what to do";
     $salt2 = "about this really";
     return md5($salt1.$username.$salt2);
 }
 
-function getDatasetId($type, $username){
+function computeDatasetId($type, $username){
     $salt1 = "rumble in the jungle";
     $salt2 = "the party is on";
     $salt3 = "but the giraff will be sad";
     return md5($salt1.$type.$salt2.$username.$salt3);
 }
 
-function createDatasetEntry($type, $username, $userid, $description, $datasetid) {
+function createDatasetEntry($type, $username, $userid, $datasetid, $description, $force = FALSE) {
     $post_id = -1;
     $author_id = $userid;
     // $slug = sanitize_title($type).'-'.$username;
     $slug = $datasetid;
-    $title = $type.' for '.$username;
-    // TODO: check if the slug already exists
-    // and do nothing if it does...
-    if( null == get_page_by_title( $title ) ) {
-	$post_id = wp_insert_post(
-	    array(
-		'comment_status'=>'closed',
-		'ping_status'=>'closed',
-		'post_author'=>$author_id,
-		'post_name'=>$slug,
-		'post_title'=>$title,
-		'post_content'=>$description,
-		'post_status'=>'publish',
-		'post_type'=>'mksdc-datasets' // of course that means that mksdc needs to be installed
-		)
-	    );
-    } else {
-	return false;	
-    } 
-    return true;
+    $title = "$type for $username";
+    $query = array(
+    	'name'        => $slug,
+    	'post_type'   => 'mksdc-datasets',
+    	'numberposts' => 1
+    );
+    $found = get_posts($query);
+    // Do nothing if title or dataset ID exists as WP slug, unless force to insert.
+    if( ($found || get_page_by_title($title) != NULL ) && !$force ) {
+    	// print $found[0]->ID;
+    	return FALSE;
+    }
+	$post_id = wp_insert_post( array(
+		'comment_status' => 'closed',
+		'ping_status'    => 'closed',
+		'post_author'    => $author_id,
+		'post_name'      => $slug,
+		'post_title'     => $title,
+		'post_content'   => $description,
+		'post_status'    => 'publish',
+		'post_type'      => 'mksdc-datasets' // of course that means that mksdc needs to be installed
+	)); 
+    return TRUE;
 } 
 
 function endsWith($haystack, $needle) {
     return $needle === "" || 
 	(($temp = strlen($haystack) - strlen($needle)) >= 0 && strpos($haystack, $needle, $temp) !== false);
 }
+
+function getDailyActivityData($k, $d){
+    $process = curl_init("http://data.afel-project.eu/api/entity/day/".$d);
+//    curl_setopt($process, CURLOPT_HTTPHEADER, array('Content-Type: application/xml', $additionalHeaders));
+//    curl_setopt($process, CURLOPT_HEADER, 1);
+    curl_setopt($process, CURLOPT_USERPWD, $k . ":");
+//    curl_setopt($process, CURLOPT_TIMEOUT, 30);
+//    curl_setopt($process, CURLOPT_POST, 1);
+//    curl_setopt($process, CURLOPT_POSTFIELDS, $payloadName);
+    curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
+    $return = curl_exec($process);
+    curl_close($process);
+    return $return;
+}
+
+
+function createDashboard( $atts ){
+    $current_user = wp_get_current_user();
+    $u = $current_user->user_login;
+    $key = computeUserKey($u);
+    $data = getDailyActivityData($key, "today");
+    return '<div id="afelcharts" style="width: 100%;"></div><script>var data = '.$data.'; afelDisplayDailyData(data, "today");</script>';
+}
+add_shortcode( 'afel_dashboard', 'createDashboard' );
+
+
+function afel_scripts_add()
+{
+    wp_register_script( 'canvasjs', 'http://canvasjs.com/assets/script/canvasjs.min.js' );
+    wp_enqueue_script( 'canvasjs' );
+    wp_register_script( 'afeldb-script', plugins_url( '/afelDashboard.js', __FILE__ ) );
+    wp_enqueue_script( 'afeldb-script' );
+}
+add_action( 'wp_enqueue_scripts', 'afel_scripts_add' );
