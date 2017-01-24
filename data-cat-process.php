@@ -4,16 +4,26 @@
  */
 /*
 Plugin Name: Data Cataloguing Process
-Plugin URI: http://mksmart.org
-Description: Create keys for users, and create new datasets
-Version: 0.0.2 - 03-11-2014
+Plugin URI: https://github.com/afel-project/data-catalogue-process-wordpress
+Description: Service for generating datasets for the Entity-Centric API and generating user keys for accessing them. Also supports the creation of learning dashboards for users.
+Version: 0.1.1 - 24-01-2017
 Author: mdaquin
 Author URI: http://mdaquin.net
 License: -
 */
 
+// Prevent direct calls
+if( !function_exists('add_action') ) die( "This is a plugin, there's nothing for you here." );
+register_activation_hook( __FILE__, 'dcp_activate' );
 // for couchdb code reuse from ecapi plugin
 require_once( str_replace("/data-cat-process/", "/", plugin_dir_path( __FILE__ )) . 'ecapi/inc/ecapiconfigform/couchdb.class.php');
+
+define('DCP_LOG', true);
+function dcp_log(){
+	if(DCP_LOG === true){
+		error_log("[DCP] " . implode(' ', func_get_args()));
+	}
+}
 
 /*
  * This should be configurable from WordPress!
@@ -23,16 +33,20 @@ $config = array(
    "ecapikey" => ""
 );
 
-// send message when called directly
-if ( !function_exists( 'add_action' ) ) {
-	echo "This is a plugin, there's nothing for you here";
-	exit;
-}
-
-define('DCP_LOG', true);
-function dcp_log(){
-	if(DCP_LOG === true){
-		error_log("[DCP] " . implode(' ', func_get_args()));
+/**
+ * Check for dependencies.
+ */
+function dcp_activate(){
+	$deps = array( 'ecapi', 'mks-data-cataloguing' );
+	$unsatisfied = array();
+	foreach( $deps as $dep )
+		if( !is_plugin_active("{$dep}/{$dep}.php") ) $unsatisfied []= $dep;
+	if( !empty($unsatisfied) && current_user_can('activate_plugins') ) {
+		$msg = 'Plugin <strong>Data Cataloguing Process</strong> (' . plugin_basename( __FILE__ ) . ')'
+			. ' requires the following WordPress plugins to be installed and activated first:<ul>';
+		foreach( $unsatisfied as $dep ) $msg .= '<li>'.$dep.'</li>';
+		$msg .= '</ul><p><a href="' . admin_url( 'plugins.php' ) . '">&laquo; Return to Plugins</a>';
+		wp_die($msg);
 	}
 }
 
@@ -91,7 +105,7 @@ function dcp_login_and_create_dataset(){
     if (!endsWith($_SERVER['REQUEST_URI'], newuserdataset)) return;
     
     $result = array( "version" => "0.1" );
-	$errstr = "";
+	$errstr = ""; $status = 200;
 	if( empty($_POST['username']) ) $errstr .= " * a username";
 	if( empty($_POST['password']) ) $errstr .= " * a non-empty password";
 	if( empty($_POST['type']) ) $errstr .= " * a type of dataset";
@@ -117,6 +131,7 @@ function dcp_login_and_create_dataset(){
 	
 	if( !createDatasetEntry($type, $username, $user->ID, $result['dataset'], $description) ){
 	    $result['error'] = "could not create dataset entry - maybe it already exists";
+	    $status = 409;
 	} else {
 	       // declare the dataset in ECAPI
 		$options = get_option('ecapi_options');
@@ -182,9 +197,10 @@ function dcp_login_and_create_dataset(){
 	}
     }
     else {
-	$result['error'] = "invalid username or password";
+		$result['error'] = "invalid username or password";
+		$status = 401;
     }
-    wp_send_json($result);
+    wp_send_json( $result, $status );
 }
 
 add_action( 'template_redirect', 'dcp_login_and_create_dataset' );
@@ -214,7 +230,7 @@ function createDatasetEntry($type, $username, $userid, $datasetid, $description,
     	'numberposts' => 1
     );
     $found = get_posts($query);
-    // Do nothing if title or dataset ID exists as WP slug, unless force to insert.
+    // Do nothing if title or dataset ID exists as WP slug, unless forced to insert.
     if( ($found || get_page_by_title($title) != NULL ) && !$force ) {
     	// print $found[0]->ID;
     	return FALSE;
