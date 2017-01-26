@@ -126,6 +126,7 @@ function dcp_login_and_create_dataset(){
     // check user credentials 
     $user = get_user_by( 'login', $username );
     if( $user && wp_check_password( $password, $user->data->user_pass, $user->ID) ) {
+	// set these immediately, so clients can interpret a Conflict to reuse a dataset.
 	$result['key'] = computeUserKey($username);
 	$result['dataset'] = computeDatasetId($type, $username);
 	
@@ -184,7 +185,8 @@ function dcp_login_and_create_dataset(){
 	       // TODO: probably how you make the link...
 	       // $json->{'catalogue-uuid'};
 	       $json->{'http://rdfs.org/ns/void#sparqlEndpoint'} = $sparqlq;
-	       $json->{'mks:graph'} = 'urn:dataset/'.$result['dataset'].'/graph';
+	       // Changed because URNs don't like slashes
+	       $json->{'mks:graph'} = 'urn:dataset:'.$result['dataset'].':graph';
 	    $json->{'mks:types'} = json_decode(str_replace('\"','"', str_replace('\\\"', '\"', str_replace('[GRAPH]', $json->{'mks:graph'}, $ecapiconf))));
 //	       $result['error'] = str_replace('\"','"', str_replace('\\\"', '\"', str_replace('[GRAPH]', $json->{'mks:graph'}, $ecapiconf)))." -".print_r($json->{'mks:types'}, TRUE)."-";
 	       // types...
