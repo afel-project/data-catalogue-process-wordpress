@@ -1,0 +1,135 @@
+	<!-- Facebook API -->
+	<script type="text/javascript">
+//<![CDATA[
+var apiver = 'v2.8';
+window.fbAsyncInit = function() {
+	FB.init({
+		appId   : '648343058580264',
+       		status  : true, // check login status
+        	cookie  : true, // enable cookies to allow the server to access the session
+        	xfbml   : true, // parse XFBML
+		version : apiver
+	});
+	checkLoginState()
+};
+(function(d, s, id) {
+	var js, fjs = d.getElementsByTagName(s)[0];
+	if (d.getElementById(id)) {
+		return
+	}
+	js = d.createElement(s);
+	js.id = id;
+	js.src = "//connect.facebook.net/en_US/sdk.js";
+	fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));
+//]]>
+	</script>
+	
+	<div class="row" id="fb_signer">
+      <div class="col-sm-8" id="fb-text">To have your activities on Facebook contribute to your learning data, authorise this app.</div>
+      <div class="col-sm-4">
+			<input name="fb-token" type="hidden" />
+			<div id="fb-signedas" style="display: none"></div>
+			<a id="facebook-signin-link" href="#" class="signin-button"> <span
+				class="facebook-logo"></span> <span class="signin-facebook-text">Sign
+					in on Facebook</span>
+			</a> <input name="if_exists_ok" type="hidden" value="true" />
+      </div>
+    </div>
+
+    <div class="container" id="afelcharts">
+      <div class="row">
+        <div class="col-sm-12 chart" id="afeltimeline"></div>
+      </div>
+      <div class="row">
+        <div class="col-sm-6 chart" id="popularsites"></div>
+        <div class="col-sm-6 chart" id="popularpages"></div>
+      </div>
+      <div class="row">
+        <div id="wordcloud chart"></div>
+      </div>
+    </div>
+<!--
+	<div id="afelcharts" style="width:100%">
+	  <div id="afeltimeline" style="margin-bottom: 20px; height: 450px; width: 100%;">
+	  </div>
+	  <div id="popularsites" style="width: 48%; height: 450px; float: left">
+	  </div>
+	  <div id="popularpages" style="width: 48%; height: 450px; float: right">
+	  </div>
+	  <div id="wordcloud" style="width: 100%; height: 450px">
+	  </div>
+	</div>
+-->
+
+	<script>
+var accessToken;
+var fbp = "https://graph.facebook.com/";
+
+function checkLoginState(skipFB) {
+	FB.getLoginStatus(function(response) {
+		var fbc = response.status === 'connected';
+		jQuery('#facebook-signin-link').toggle(!fbc);
+		if (fbc && !skipFB) {
+			jQuery('#fb-signedas').empty();
+			accessToken = response.authResponse.accessToken;
+			getUserData();
+			jQuery('[name="fb-token"]').val(accessToken);
+		}
+		if(accessToken) {
+		jQuery.get(fbp + apiver + "/debug_token",{
+			input_token: accessToken,
+			access_token: accessToken
+		}, function(data, status, req) {
+			var noww = Date.now();
+			if( noww > data.data.expires_at*1000 ) console.log("WARN OAuth token expired by "+data.data.expires_at*1000-noww);
+			jQuery.post( "/apps/facebook/", function( data ) {
+
+			});
+		})
+	}
+		
+		jQuery("#fb-signedas").toggle(fbc);
+		if(fbc) jQuery("#fb-text").css('visibility','hidden');
+		else jQuery("#fb-text").css('visibility','visible');
+		jQuery('#gobutton').prop('disabled', !fbc || !jQuery('[name="username"]').val())
+	});
+}
+
+function getUserData() {
+	jQuery.get(fbp + apiver + "/me", {
+		fields: 'id,name,picture, link',
+		access_token: accessToken
+	}, function(data, status, req) {
+		if (data.id && data.name) { jQuery("#fb-signedas").append(
+			'<a href="'+data.link+'" target="_blank"><img src="'+data.picture.data.url+'"/></a>'
+			+'<span>signed in as '
+			+'<strong><a href="'+data.link+'" target="_blank">'+data.name+'</strong></a></span>'
+			+'<a class="fb-signout" href="#">Sign out</a>'
+			+''
+		)}
+	})
+}
+jQuery('#facebook-signin-link').on('click', function(e) {
+	e.preventDefault();
+	FB.login(function(response) {
+		checkLoginState()
+	}, {
+		scope: 'user_about_me,user_education_history,user_actions.books,user_actions.video,user_status, public_profile,user_likes,user_posts'
+	});
+});
+jQuery("#fb-signedas").on('click','.fb-signout',function(e){
+	e.preventDefault();
+	FB.logout(function(response) {
+		console.log('FB user has deauthorized.');
+		checkLoginState()
+	});	
+});
+	</script>
+	<!-- CanvasJS -->
+	<script>
+var data = <?php print $data?>;
+jQuery( document ).ready(function() {
+	 afelDisplayDailyData(data, "today");
+});
+	</script>

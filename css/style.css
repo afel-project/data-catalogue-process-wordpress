@@ -1,0 +1,13 @@
+.chart { height:320px }
+.fb-signout { float:right; font-size:.8em }
+.signin-button { background-color:#3b5998; border:1px solid #3b5998; border-radius:4px; box-shadow:1px 1px #333; display:table; margin:0 auto; text-decoration:none; padding:5px 10px }  
+.signin-button, .signin-button:hover { color:#fff; cursor:pointer }
+.signin-facebook-text { font-size:12px; font-weight:bold; margin-left:0 }
+
+#afelcharts { padding:0 }
+#afelcharts row { margin:0 }
+#fb-signedas { background-color:#3b5998; border:1px solid #66d; color:#fff; font-size:0.85em; padding:5px }
+#fb-signedas a { color:#fff }
+#fb-signedas img { height:32px; margin: 0 5px; vertical-align:middle }
+#fb-signedas span { vertical-align:middle }
+#fb_signer { }

@@ -52,9 +52,9 @@ function dcp_activate(){
 
 function dcp_add_scripts(){
 //	wp_register_script('mksdc-js', plugins_url('/js/mksdc.js', __FILE__), array('jquery'));
-//	wp_register_style('mksdc-style', plugins_url('/css/mksdc.css', __FILE__));
+	wp_register_style('afel_dashboard', plugins_url('/css/style.css', __FILE__));
 //	wp_enqueue_script('mksdc-js');
-//	wp_enqueue_style('mksdc-style');
+	wp_enqueue_style('afel_dashboard');
 }
 
 function dcp_init() {
@@ -269,13 +269,16 @@ function getDailyActivityData($k, $d){
     return $return;
 }
 
-
 function createDashboard( $atts ){
     $current_user = wp_get_current_user();
     $u = $current_user->user_login;
     $key = computeUserKey($u);
     $data = getDailyActivityData($key, "today");
-    return '<div id="afelcharts" style="width: 100%;"></div><script>var data = '.$data.'; afelDisplayDailyData(data, "today");</script>';
+    ob_start();
+    include 'pages/user_dashboard.phtml';
+    $html = ob_get_contents();
+	ob_end_clean();
+    return $html;
 }
 add_shortcode( 'afel_dashboard', 'createDashboard' );
 
