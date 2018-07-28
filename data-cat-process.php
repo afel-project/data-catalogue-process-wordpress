@@ -69,17 +69,36 @@ function dcp_handle_registration() {
 			// XXX there is a hardcoded path here which needs to be matched 
 			// by a page slug on WordPress!
 			// TODO handle this condition somewhere else
-			if( basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH)) === "newuserdataset" ) {
+			$bn = basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
+			if( $bn === "newuserdataset" ) {                
 			    $result = array( "version" => DCP_VERSION );
    				$missing = [];
 				// check that the query includes what we need
 				if( empty($_POST['type']) ) $missing []= "a type of dataset";
 				if( empty($_POST['description']) ) $missing []= "a description for the dataset";
-				if( empty($_POST['ecapiconf']) ) $missing []= "a configuration for the Data API";
+//				if( empty($_POST['ecapiconf']) ) $missing []= "a configuration for the Data API";
 				handle_invalid_registration( $missing, $result );
-				$rez = dcp_login_and_create_dataset( $_POST['type'], $_POST['description'], $_POST['ecapiconf'] );
+				$rez = dcp_login_and_create_dataset( $_POST['type'], $_POST['description'] );
 				wp_send_json( $rez, $rez['http_status'] );
+			} 
+			/* ****** BEGIN super-temporary hack ****** */
+			elseif( $bn === "verifyuser" ) {
+				// header('Access-Control-Allow-Origin : http://analytics.didactalia.net'); 
+				$result = array( "version" => DCP_VERSION );
+				if( !empty($_POST['username']) && !empty($_POST['password']) ) {
+					$user = get_user_by( 'login', $_POST['username'] );
+					if( !$user || !wp_check_password( $_POST['password'], $user->data->user_pass, $user->ID) ) {
+						$result['http_status'] = 401;
+                        $result['error'] = "invalide username or password";
+					} else {
+						$result["whoami"] = $user->user_login;
+                        $result["key"] = computeUserKey($user->user_login);
+						$result['http_status'] = 200;
+					}
+				} else $result['http_status'] = 403;
+				wp_send_json( $result, $result['http_status'] ); // it also dies after sending.
 			}
+			/* ****** END super-temporary hack ****** */
 			break;
 		// default:
 		//	wp_send_json( $resp, 405 );
@@ -93,7 +112,7 @@ function dcp_handle_registration() {
  * TODO: get rid of credential checks in POSTdata. 
  * In fact, change this function to pass it the WP User object
  */
-function dcp_login_and_create_dataset( $ds_type, $ds_description, $ecapi_conf, $user_id = 0 ) {
+function dcp_login_and_create_dataset( $ds_type, $ds_description, $user_id = 0 ) {
     $result = array( "version" => DCP_VERSION );
     $missing = [];
 	$status = 200;	
@@ -133,7 +152,7 @@ function dcp_login_and_create_dataset( $ds_type, $ds_description, $ecapi_conf, $
 		$status = 409;
 	} else {
 	   // declare the dataset in ECAPI
-		$options = get_option('ecapi_options');
+/*		$options = get_option('ecapi_options');
 		$ecapiroot = str_replace("entity", "dataset", $options['ecapi_url']);
 		$options = get_option('dcp_options');
 		$sukey = $options['ecapi_su_key'];
@@ -205,7 +224,7 @@ function dcp_login_and_create_dataset( $ds_type, $ds_description, $ecapi_conf, $
 		$response = $dbms->saveDoc( $result['dataset'], $json );
 		if( !empty($response['data']->error) )
 			$result['error'] = "failed to configure dataset ".$result['dataset'].' - '.$response['data']->error.': '.$response['data']->reason;
-		// TODO: Connect the catalogue dataset to ECAPI	
+            // TODO: Connect the catalogue dataset to ECAPI	*/
 	}
 	$result['http_status'] = $status;
     // wp_send_json( $result, $status ); // it also dies after sending.
@@ -318,12 +337,57 @@ add_action( 'template_redirect', 'dcp_handle_registration' );
 //================================================================================
 
 function createDashboard( $atts ){
-    $current_user = wp_get_current_user();
-    $u = $current_user->user_login;
-    $key = computeUserKey($u);
-    $data = getDailyActivityData($key, "today");
     ob_start();
-    include 'pages/user_dashboard.phtml';
+    if (!is_user_logged_in()){
+        echo '<div><strong>You don'."'".'t seem to be currently <a href="http://data.afel-project.eu/catalogue/wp-login.php">logged in</a>?<strong></div><div>&nbsp;</div><div>&nbsp;</div>';
+    } else {    
+        $current_user = wp_get_current_user();
+        $u = $current_user->user_login;
+        $key = computeUserKey($u);
+        $csvid = getCSVId($key);
+        if ($csvid != "") {
+            echo '<iframe id="advanceddashboard" style="width: 100%; height: 100vh;" src="https://vizrectest.know-center.tugraz.at?dataurl=http%3A%2F%2Fdata.afel-project.eu%2Fapi%2Fbh%2Fcsv%2F%3Fid%3D'.$csvid.'"> </iframe>';
+        } else {
+            echo '<div><strong>Could not connect to your data. Try refreshing and check that you are <a href="http://data.afel-project.eu/catalogue/wp-login.php">logged in</a>?<strong></div><div>&nbsp;</div><div>&nbsp;</div>';
+        }
+    }
+    $html = ob_get_contents();
+    ob_end_clean();
+    return $html;
+}
+
+function getCSVId($u){
+    $process = curl_init("http://127.0.0.1:8106?user=".$u."&csvid=yes");
+	// curl_setopt($process, CURLOPT_HTTPHEADER, array('Content-Type: application/xml', $additionalHeaders));
+	// curl_setopt($process, CURLOPT_HEADER, 1);
+    curl_setopt($process, CURLOPT_USERPWD, "browsinghistory:kaH3GNCG");
+	// curl_setopt($process, CURLOPT_TIMEOUT, 30);
+	// curl_setopt($process, CURLOPT_POST, 1);
+	// curl_setopt($process, CURLOPT_POSTFIELDS, $payloadName);
+    curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
+    $return = curl_exec($process);
+    $ro = json_decode($return);
+    curl_close($process);
+    return $ro->csvid;
+}
+
+
+function createDataLink( $atts ){
+    ob_start();    
+    if (!is_user_logged_in()){
+        echo '<div><strong>You don'."'".'t seem to be currently <a href="http://data.afel-project.eu/catalogue/wp-login.php">logged in</a>?<strong></div><div>&nbsp;</div><div>&nbsp;</div>';
+    } else {
+        $current_user = wp_get_current_user();
+        $u = $current_user->user_login;    
+        $key = computeUserKey($u);
+        $csvid = getCSVId($key);
+//    include 'pages/user_dashboard.phtml';
+        if ($csvid != "") {
+            echo '<div><a class="downloadbutton" target="_blank" href="http://data.afel-project.eu/api/bh/csv/?id='.$csvid.'">Get Your Data (csv file)</a></div><div>&nbsp;</div>';
+        } else {
+            echo '<div><strong>Could not connect to your data. Try refreshing and check that you are <a href="http://data.afel-project.eu/catalogue/wp-login.php">logged in</a>?<strong></div><div>&nbsp;</div><div>&nbsp;</div>';
+        }
+    }
     $html = ob_get_contents();
 	ob_end_clean();
     return $html;
@@ -356,6 +420,14 @@ function getDailyActivityData($k, $d){
 // Hooks
 add_action( 'wp_enqueue_scripts', 'dcp_add_scripts' );
 add_shortcode( 'afel_dashboard', 'createDashboard' );
+add_shortcode( 'afel_data', 'createDataLink' );
+/* ****** BEGIN ugly CORS hack ****** */
+add_action( 'init', 'handle_preflight' );
+function handle_preflight() {
+	header("Access-Control-Allow-Origin: http://analytics.didactalia.net");
+	header("Access-Control-Allow-Methods: POST");
+}
+/* ****** END ugly CORS hack ****** */
 
 //================================================================================
 // Additional extractor-specific scripts
